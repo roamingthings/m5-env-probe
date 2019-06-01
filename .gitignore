@@ -172,3 +172,5 @@ _deps
 # External projects
 *-prefix/
 sdkconfig
+
+data/config.json
