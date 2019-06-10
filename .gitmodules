@@ -1,3 +1,6 @@
 [submodule "components/arduino"]
 	path = components/arduino
 	url = git@github.com:roamingthings/arduino-esp32.git
+[submodule "components/bme680/lib"]
+	path = components/bme680/lib
+	url = https://github.com/BoschSensortec/BME680_driver.git

@@ -1,0 +1,23 @@
+menu "BME680"
+
+    menu "I2C"
+        config BME680_I2C_SCL_IO
+            int "BME680 SCL GPIO Num"
+            default 22
+            help
+                GPIO number for BME680 I2C clock line.
+
+        config BME680_I2C_SDA_IO
+            int "BME680 SDA GPIO Num"
+            default 21
+            help
+                GPIO number for BME680 I2C data line.
+
+        config BME680_I2C_PORT_NUM
+            int "Port Number"
+            default 1
+            help
+                Port number for BME680 I2C device.
+    endmenu
+
+endmenu
