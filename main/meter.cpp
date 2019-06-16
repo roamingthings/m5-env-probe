@@ -11,7 +11,6 @@ TFT_eSPI tft = TFT_eSPI();       // Invoke custom library
 
 float ltx = 0;    // Saved x coord of bottom of needle
 uint16_t osx = 120, osy = 120; // Saved x & y coords
-uint32_t updateTime = 0;       // time for next update
 
 int old_analog = -999; // Value last displayed
 int old_digital = -999; // Value last displayed
@@ -21,11 +20,14 @@ int old_value[6] = {-1, -1, -1, -1, -1, -1};
 int d = 0;
 
 void analogMeter();
+
 void plotNeedle(int value, byte ms_delay);
+
 void plotLinear(char *label, int x, int y);
+
 void plotPointer(void);
 
-static const char* TAG = "meter";
+static const char *TAG = "meter";
 
 void meter_setup(void) {
     tft.init();
@@ -42,8 +44,6 @@ void meter_setup(void) {
     plotLinear("A3", 3 * d, 160);
     plotLinear("A4", 4 * d, 160);
     plotLinear("A5", 5 * d, 160);
-
-    updateTime = millis(); // Next update time
 }
 
 // #########################################################################
@@ -265,28 +265,19 @@ void plotPointer(void) {
 }
 
 void meter_loop() {
-    if (updateTime <= millis()) {
-        updateTime = millis() + LOOP_PERIOD;
 
-        d += 4;
-        if (d >= 360) d = 0;
+    d += 4;
+    if (d >= 360) d = 0;
 
-        //value[0] = map(analogRead(A0), 0, 1023, 0, 100); // Test with value form Analogue 0
+    // Create a Sine wave for testing
+    value[0] = 50 + 50 * sin((d + 0) * 0.0174532925);
+    value[1] = 50 + 50 * sin((d + 60) * 0.0174532925);
+    value[2] = 50 + 50 * sin((d + 120) * 0.0174532925);
+    value[3] = 50 + 50 * sin((d + 180) * 0.0174532925);
+    value[4] = 50 + 50 * sin((d + 240) * 0.0174532925);
+    value[5] = 50 + 50 * sin((d + 300) * 0.0174532925);
 
-        // Create a Sine wave for testing
-        value[0] = 50 + 50 * sin((d + 0) * 0.0174532925);
-        value[1] = 50 + 50 * sin((d + 60) * 0.0174532925);
-        value[2] = 50 + 50 * sin((d + 120) * 0.0174532925);
-        value[3] = 50 + 50 * sin((d + 180) * 0.0174532925);
-        value[4] = 50 + 50 * sin((d + 240) * 0.0174532925);
-        value[5] = 50 + 50 * sin((d + 300) * 0.0174532925);
+    plotPointer();
 
-        //unsigned long t = millis();
-
-        plotPointer();
-
-        plotNeedle(value[0], 0);
-
-        //Serial.println(millis()-t); // Print time taken for meter update
-    }
+    plotNeedle(value[0], 0);
 }

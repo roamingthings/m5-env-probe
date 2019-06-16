@@ -18,20 +18,23 @@ extern "C"
 }
 
 #define MAINLOOPCORE 1
-#define MAIN_LOOP_PERIOD 2000
+#define MEASURING_INTERVAL 2000
+#define DISPLAY_REFRESH_INTERVAL 35
 
+static const char *TAG = "main";
 
-TaskHandle_t runLoopHandle = NULL;
+TaskHandle_t runMeasuringLoopHandle = NULL;
+TaskHandle_t runDisplayLoopHandle = NULL;
+
 bool loopTaskWDTEnabled = false; // Enable if watchdog running
 struct bme680_dev gas_sensor;
 
-uint32_t mainUpdateTime = 0;       // time for next update
-
 extern "C"
 {
-void runLoop(void *pvParameters);
-void setupApp();
+void setupTasks();
 
+void runMeasuringLoop(void *pvParameters);
+void runDisplayLoop(void *pvParameters);
 
 void app_main() {
     esp_err_t ret = nvs_flash_init();
@@ -44,22 +47,23 @@ void app_main() {
     initArduino();
     meter_setup();
     esp_bme680_init(BME680_I2C_ADDR_SECONDARY, &gas_sensor);
-    mainUpdateTime = millis();
 
-    setupApp();
+    setupTasks();
 }
 
-void setupApp() {
-    printf("Initializing App\n");
-    xTaskCreateUniversal(runLoop, "loopTask", 8192, NULL, 1, &runLoopHandle, MAINLOOPCORE);
+void setupTasks() {
+    ESP_LOGD(TAG, "Setup measuring task");
+    xTaskCreateUniversal(runMeasuringLoop, "measuringTask", 8192, NULL, 2, &runMeasuringLoopHandle, MAINLOOPCORE);
+    ESP_LOGD(TAG, "Setup display task");
+    xTaskCreateUniversal(runDisplayLoop, "displayTask", 8192, NULL, 1, &runDisplayLoopHandle, MAINLOOPCORE);
 }
 
-void runLoop(void *pvParameters) {
+void runMeasuringLoop(void *pvParameters) {
     /* Get the total measurement duration so as to sleep or wait till the
  * measurement is complete */
     uint16_t meas_period;
     bme680_get_profile_dur(&meas_period, &gas_sensor);
-    printf("Measure period is %d ms", meas_period);
+    ESP_LOGD(TAG, "Measure period is %d ms", meas_period);
 
     // *** Read
     struct bme680_field_data data;
@@ -69,39 +73,44 @@ void runLoop(void *pvParameters) {
         if (loopTaskWDTEnabled) {
             esp_task_wdt_reset();
         }
-
-        meter_loop();
-        if (mainUpdateTime <= millis()) {
-            mainUpdateTime = millis() + MAIN_LOOP_PERIOD;
-
-            printf("Executing main loop\n");
+        ESP_LOGD(TAG, "Executing main loop");
 
 
-            rslt = bme680_get_sensor_data(&data, &gas_sensor);
+        rslt = bme680_get_sensor_data(&data, &gas_sensor);
+        if (rslt != BME680_OK) {
+            ESP_LOGI(TAG, "Invalid measurement");
+            continue;
+        }
+
+        /* Avoid using measurements from an unstable heating setup */
+        if (data.status & BME680_GASM_VALID_MSK) {
+            printf("T: %.2f degC, P: %.2f hPa, H %.2f %%rH, G: %d ohms\n",
+                   data.temperature / 100.0f,
+                   data.pressure / 100.0f, data.humidity / 1000.0f, data.gas_resistance);
+        } else {
+            printf("T: %.2f degC, P: %.2f hPa, H %.2f %%rH\n", data.temperature / 100.0f,
+                   data.pressure / 100.0f, data.humidity / 1000.0f);
+        }
+
+        /* Trigger the next measurement if you would like to read data out continuously */
+        if (gas_sensor.power_mode == BME680_FORCED_MODE) {
+            rslt = bme680_set_sensor_mode(&gas_sensor);
             if (rslt != BME680_OK) {
-                printf("Invalid measurement");
-                continue;
-            }
-
-            /* Avoid using measurements from an unstable heating setup */
-            if (data.status & BME680_GASM_VALID_MSK) {
-                printf("T: %.2f degC, P: %.2f hPa, H %.2f %%rH, G: %d ohms\n",
-                       data.temperature / 100.0f,
-                       data.pressure / 100.0f, data.humidity / 1000.0f, data.gas_resistance);
-            } else {
-                printf("T: %.2f degC, P: %.2f hPa, H %.2f %%rH\n", data.temperature / 100.0f,
-                       data.pressure / 100.0f, data.humidity / 1000.0f);
-            }
-
-            /* Trigger the next measurement if you would like to read data out continuously */
-            if (gas_sensor.power_mode == BME680_FORCED_MODE) {
-                rslt = bme680_set_sensor_mode(&gas_sensor);
-                if (rslt != BME680_OK) {
-                    printf("Unable to set BME680 power mode");
-                }
+                ESP_LOGE(TAG, "Unable to set BME680 power mode");
             }
         }
-        delay(10);
+        delay(MEASURING_INTERVAL);
+    }
+}
+
+void runDisplayLoop(void *pvParameters) {
+    for (;;) {
+        if (loopTaskWDTEnabled) {
+            esp_task_wdt_reset();
+        }
+
+        meter_loop();
+        delay(DISPLAY_REFRESH_INTERVAL);
     }
 }
 }
