@@ -4,3 +4,6 @@
 [submodule "components/bme680/lib"]
 	path = components/bme680/lib
 	url = https://github.com/BoschSensortec/BME680_driver.git
+[submodule "main/libraries/TFT_eSPI"]
+	path = main/libraries/TFT_eSPI
+	url = git@github.com:roamingthings/TFT_eSPI.git

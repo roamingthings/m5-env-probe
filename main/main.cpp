@@ -6,6 +6,7 @@
 
 #include <memory>
 
+
 extern "C"
 {
 #include "freertos/FreeRTOS.h"
@@ -13,12 +14,18 @@ extern "C"
 #include "esp_task_wdt.h"
 #include "nvs_flash.h"
 #include "esp_bme680.h"
+#include "meter.h"
 }
 
 #define MAINLOOPCORE 1
+#define MAIN_LOOP_PERIOD 2000
+
+
 TaskHandle_t runLoopHandle = NULL;
 bool loopTaskWDTEnabled = false; // Enable if watchdog running
 struct bme680_dev gas_sensor;
+
+uint32_t mainUpdateTime = 0;       // time for next update
 
 extern "C"
 {
@@ -35,10 +42,11 @@ void app_main() {
     ESP_ERROR_CHECK(ret);
 
     initArduino();
-    setupApp();
-
-
+    meter_setup();
     esp_bme680_init(BME680_I2C_ADDR_SECONDARY, &gas_sensor);
+    mainUpdateTime = millis();
+
+    setupApp();
 }
 
 void setupApp() {
@@ -61,33 +69,39 @@ void runLoop(void *pvParameters) {
         if (loopTaskWDTEnabled) {
             esp_task_wdt_reset();
         }
-        printf("Executing main loop\n");
 
-        rslt = bme680_get_sensor_data(&data, &gas_sensor);
-        if (rslt != BME680_OK) {
-            printf("Invalid measurement");
-            continue;
-        }
+        meter_loop();
+        if (mainUpdateTime <= millis()) {
+            mainUpdateTime = millis() + MAIN_LOOP_PERIOD;
 
-        /* Avoid using measurements from an unstable heating setup */
-        if (data.status & BME680_GASM_VALID_MSK) {
-            printf("T: %.2f degC, P: %.2f hPa, H %.2f %%rH, G: %d ohms\n",
-                   data.temperature / 100.0f,
-                   data.pressure / 100.0f, data.humidity / 1000.0f, data.gas_resistance);
-        } else {
-            printf("T: %.2f degC, P: %.2f hPa, H %.2f %%rH\n", data.temperature / 100.0f,
-                   data.pressure / 100.0f, data.humidity / 1000.0f);
-        }
+            printf("Executing main loop\n");
 
-        /* Trigger the next measurement if you would like to read data out continuously */
-        if (gas_sensor.power_mode == BME680_FORCED_MODE) {
-            rslt = bme680_set_sensor_mode(&gas_sensor);
+
+            rslt = bme680_get_sensor_data(&data, &gas_sensor);
             if (rslt != BME680_OK) {
-                printf("Unable to set BME680 power mode");
+                printf("Invalid measurement");
+                continue;
+            }
+
+            /* Avoid using measurements from an unstable heating setup */
+            if (data.status & BME680_GASM_VALID_MSK) {
+                printf("T: %.2f degC, P: %.2f hPa, H %.2f %%rH, G: %d ohms\n",
+                       data.temperature / 100.0f,
+                       data.pressure / 100.0f, data.humidity / 1000.0f, data.gas_resistance);
+            } else {
+                printf("T: %.2f degC, P: %.2f hPa, H %.2f %%rH\n", data.temperature / 100.0f,
+                       data.pressure / 100.0f, data.humidity / 1000.0f);
+            }
+
+            /* Trigger the next measurement if you would like to read data out continuously */
+            if (gas_sensor.power_mode == BME680_FORCED_MODE) {
+                rslt = bme680_set_sensor_mode(&gas_sensor);
+                if (rslt != BME680_OK) {
+                    printf("Unable to set BME680 power mode");
+                }
             }
         }
-
-        delay(2000);
+        delay(10);
     }
 }
 }
